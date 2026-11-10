@@ -2,7 +2,7 @@
 
 #### Singularity overhaul of our RNA-seq metagenomic pipeline
 
-VERSION='0.5'
+VERSION='0.6'
 GRN='\033[1;32m'
 GRN2='\033[0;32m'
 UL='\033[4;34m'
@@ -16,7 +16,7 @@ then
   echo "Synopsis:"
   echo "  Accurately discover and quantify bacterial reads in bulk or 10x Chromium/Visium RNA-seq datasets."
   echo "Usage:" 
-  printf "  ${GRN}dreamcatcher${NC} ${GRN2}<reads_directory> <sample> [--bulk] [--bam] [--skip-remap] [--ram RAM] [-p CPUs]${NC}\n"
+  printf "  ${GRN}dreamcatcher${NC} ${GRN2}<reads_directory> <sample> [--bulk] [--bam] [--skip-remap] [--ram RAM] [-p CPUs] [--sif SIF] [--cmd CMD] [--refdata-root DIR]${NC}\n"
   echo 
   echo "Positional arguments:"
   echo "  <reads_directory>  Directory containing samples sub-directories with either unmapped reads from STARsolo,"
@@ -33,7 +33,14 @@ then
   echo "  --ram [X]          Maximum amount of RAM available, in GB (default '100')."
   echo "                     Set this to about 10-20% less than the actual available memory!" 
   echo "  -p [X]             Number of cores for parallel execution (default '16')"
-  echo  
+  echo "  --sif [X]          Path to the Dreamcatcher Singularity image (default"
+  echo "                     '/nfs/cellgeni/singularity/images/dreamcatcher.sif')"
+  echo "  --cmd [X]          Wrapper command prefixed to every tool call without the image path"
+  echo "                     (default 'singularity run --bind /nfs,/lustre,/software')."
+  echo "  --refdata-root [X] Root of the reference data directory (default"
+  echo "                     '/nfs/cellgeni/refdata_dreamcatcher'). All reference paths (NCBI"
+  echo "                     genomes, KrakenUniq DB, T2T+phiX decoy index) are derived from it"
+  echo
   printf "See ${UL}github.com/apredeus/dreamcatcher${NC} for more information.\n"
   echo 
   exit 1
@@ -63,21 +70,9 @@ BULK=false
 BAM=false
 PAIRED=false
 SKIPREMAP=false
-
-#########################################################################################
-########### These are the databases and files used by Dreamcatcher ######################
-########### For now they are hardcoded here, but maybe should migrate to json ###########
-#########################################################################################
-
-
 SIF="/nfs/cellgeni/singularity/images/dreamcatcher.sif"
-CMD="singularity run --bind /nfs,/lustre,/software $SIF"
-NCBI="/nfs/cellgeni/refdata_dreamcatcher/NCBI_datasets/bacteria_ref/ncbi_dataset/data/"
-KUDB="/nfs/cellgeni/refdata_dreamcatcher/KrakenUniq_select"
-HST2T="/nfs/cellgeni/refdata_dreamcatcher/decoy_reference/T2T_mito_phix"
-SEQ2TAXID="$KUDB/seqid2taxid.map.refseq"
-GENBANK="$KUDB/assembly_summary_bacteria.txt"
-GSA="$KUDB/gcf_species_genus.tsv"
+CMD=""
+REFDATA_ROOT="/nfs/cellgeni/refdata_dreamcatcher"
 
 #########################################################################################
 ######################## Don't change things below this line ############################
@@ -90,7 +85,7 @@ if [[ ${PIPESTATUS[0]} -ne 4 ]]; then
     exit 1
 fi
 
-PARSED=$(getopt -o p: --long bulk,bam,skip-remap,ram: -- "$@")
+PARSED=$(getopt -o p: --long bulk,bam,skip-remap,ram:,sif:,cmd:,refdata-root: -- "$@")
 if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
     exit 2
 fi
@@ -121,6 +116,18 @@ do
             CPUS="$2"
             shift 2
             ;;
+        --sif)
+            SIF="$2"
+            shift 2
+            ;;
+        --cmd)
+            CMD="$2"
+            shift 2
+            ;;
+        --refdata-root)
+            REFDATA_ROOT="$2"
+            shift 2
+            ;;
         --)
             shift
             break
@@ -131,6 +138,19 @@ do
             ;;
     esac
 done
+
+### Set the rest of the default values.
+NCBI="$REFDATA_ROOT/NCBI_datasets/bacteria_ref/ncbi_dataset/data/"
+KUDB="$REFDATA_ROOT/KrakenUniq_select"
+HST2T="$REFDATA_ROOT/decoy_reference/T2T_mito_phix"
+SEQ2TAXID="$KUDB/seqid2taxid.map.refseq"
+GENBANK="$KUDB/assembly_summary_bacteria.txt"
+GSA="$KUDB/gcf_species_genus.tsv"
+if [[ -z $CMD ]]
+then
+    CMD="singularity run --bind /nfs,/lustre,/software"
+fi
+CMD="$CMD $SIF"
 
 if (( $# != 2 )) 
 then
@@ -215,11 +235,11 @@ then
 	then
 	    $CMD krakenuniq --threads $CPUS --db $KUDB --preload-size ${RAM}G --output kuniq.output.txt \
 	        --report-file kuniq.report.txt Unmapped_filt.R1.fastq.gz &> kuniq.log
-	    $CMD pigz -f kuniq.output.txt
+	    $CMD pigz -p$CPUS -f kuniq.output.txt
 	else 
 	    $CMD krakenuniq --threads $CPUS --db $KUDB --preload-size ${RAM}G --output kuniq.output.txt \
 	        --report-file kuniq.report.txt --paired Unmapped_filt.R1.fastq.gz Unmapped_filt.R2.fastq.gz &> kuniq.log
-	    $CMD pigz -f kuniq.output.txt
+	    $CMD pigz -p$CPUS -f kuniq.output.txt
 	fi
 	
 	## KrakenUniq quits with no error and no output in some cases, still not sure why. Just re-run the job.  

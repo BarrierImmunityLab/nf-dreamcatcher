@@ -17,7 +17,7 @@ RUN apt-get install -y \
 # Install UMAP
 RUN LLVM_CONFIG=/usr/lib/llvm-10/bin/llvm-config pip3 install llvmlite
 RUN pip3 install numpy
-RUN pip3 install umap-learn
+RUN pip3 install scikit-learn==1.3.2 umap-learn==0.5.7
 
 # Install FIt-SNE
 RUN git clone --branch v1.2.1 https://github.com/KlugerLab/FIt-SNE.git

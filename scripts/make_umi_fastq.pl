@@ -14,6 +14,7 @@ if (scalar @ARGV != 2) {
 my $dir = shift @ARGV;
 my $out = shift @ARGV;
 my $cmd = $ENV{'CMD'}; 
+my $cpus = $ENV{'CPUS'};
 
 open OUT,">",$out or die "$!"; 
 
@@ -59,11 +60,11 @@ if (-s $dir."/Log.final.out") {
 
     ## this occasionally stupid concoction reads 2 fastq files synchronously.
 	if ($R1 =~ m/gz$/ && $R2 =~ m/gz$/) { 
-		open READ1,"$cmd pigz -cd $R1 |" or die "$!"; 
-		open READ2,"$cmd pigz -cd $R2 |" or die "$!"; 
+		open READ1,"$cmd pigz -p$cpus -cd $R1 |" or die "$!"; 
+		open READ2,"$cmd pigz -p$cpus -cd $R2 |" or die "$!"; 
 	} elsif ($R1 =~ m/bz2$/ && $R2 =~ m/bz2$/) { 
-		open READ1,"$cmd pbzip2 -cd $R1 |" or die "$!"; 
-		open READ2,"$cmd pbzip2 -cd $R2 |" or die "$!";
+		open READ1,"$cmd pbzip2 -p$cpus -cd $R1 |" or die "$!"; 
+		open READ2,"$cmd pbzip2 -p$cpus -cd $R2 |" or die "$!";
 	} else { 
 		open READ1,"$cmd cat $R1 |" or die "$!"; 
 		open READ2,"$cmd cat $R2 |" or die "$!";
@@ -142,9 +143,9 @@ if (-s $dir."/Log.final.out") {
 	## now do the processing. We keep only the BC+UMI part of the barcode read
 	## this would lose some biological info in case of PE 5' experiments, but I think it should not matter this much for bacterial reads
 	if ($paired) { 
-		open BAM,"$cmd samtools view -\@4 -f132 $bam |" or die "ERROR: failed to open the bam file using samtools!";
+		open BAM,"$cmd samtools view -\@$cpus -f132 $bam |" or die "ERROR: failed to open the bam file using samtools!";
 	} else { 
-		open BAM,"$cmd samtools view -\@4 -f4 $bam |" or die "ERROR: failed to open the bam file using samtools!";
+		open BAM,"$cmd samtools view -\@$cpus -f4 $bam |" or die "ERROR: failed to open the bam file using samtools!";
 	}
 
 	my ($rname,$bc,$umi,$seq,$qual) = ('') x 5;

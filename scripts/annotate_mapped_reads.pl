@@ -15,9 +15,10 @@ if (scalar @ARGV != 2) {
 my $fcounts_bam = shift @ARGV; 
 my $human_bam = shift @ARGV; 
 my $cmd = $ENV{'CMD'};  ## singularity command from the master env
+my $cpus = $ENV{'CPUS'};
 
-open FCBAM,"$cmd samtools view -\@4 $fcounts_bam |" or die "ERROR: failed to open combined bacterial bam $fcounts_bam using samtools!";
-open HUMBAM,"$cmd samtools view -\@4 $human_bam |" or die "ERROR: failed to open human remap bam $human_bam file using samtools!";
+open FCBAM,"$cmd samtools view -\@$cpus $fcounts_bam |" or die "ERROR: failed to open combined bacterial bam $fcounts_bam using samtools!";
+open HUMBAM,"$cmd samtools view -\@$cpus $human_bam |" or die "ERROR: failed to open human remap bam $human_bam file using samtools!";
 
 my $H = {}; 
 

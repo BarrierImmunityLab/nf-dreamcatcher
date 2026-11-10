@@ -15,6 +15,7 @@ if (scalar @ARGV != 1) {
 my $dir = shift @ARGV;
 my $out = shift @ARGV;
 my $cmd = $ENV{'CMD'};
+my $cpus = $ENV{'CPUS'};
 my $len_cutoff = 40; 
 
 if (-s $dir."/Log.final.out") { 
@@ -47,11 +48,11 @@ if (-s $dir."/Log.final.out") {
         open OUT2,">","Unmapped_filt.R2.fastq" or die "$!"; 
         ## this occasionally stupid concoction reads 2 fastq files synchronously.
         if ($R1 =~ m/gz$/ && $R2 =~ m/gz$/) { 
-            open READ1,"$cmd pigz -cd $R1 |" or die "$!"; 
-            open READ2,"$cmd pigz -cd $R2 |" or die "$!"; 
+            open READ1,"$cmd pigz -p$cpus -cd $R1 |" or die "$!"; 
+            open READ2,"$cmd pigz -p$cpus -cd $R2 |" or die "$!"; 
         } elsif ($R1 =~ m/bz2$/ && $R2 =~ m/bz2$/) { 
-            open READ1,"$cmd pbzip2 -cd $R1 |" or die "$!"; 
-            open READ2,"$cmd pbzip2 -cd $R2 |" or die "$!";
+            open READ1,"$cmd pbzip2 -p$cpus -cd $R1 |" or die "$!"; 
+            open READ2,"$cmd pbzip2 -p$cpus -cd $R2 |" or die "$!";
         } else { 
             open READ1,"$cmd cat $R1 |" or die "$!"; 
             open READ2,"$cmd cat $R2 |" or die "$!";
@@ -102,9 +103,9 @@ if (-s $dir."/Log.final.out") {
         
         open OUT1,">","Unmapped_filt.R1.fastq" or die "$!"; 
         if ($R1 =~ m/gz$/) { 
-            open READ1,"$cmd pigz -cd $R1 |" or die "$!"; 
+            open READ1,"$cmd pigz -p$cpus -cd $R1 |" or die "$!"; 
         } elsif ($R1 =~ m/bz2$/) { 
-            open READ1,"$cmd pbzip2 -cd $R1 |" or die "$!"; 
+            open READ1,"$cmd pbzip2 -p$cpus -cd $R1 |" or die "$!"; 
         } else { 
             open READ1,"$cmd cat $R1 |" or die "$!"; 
         }
@@ -159,14 +160,14 @@ if (-s $dir."/Log.final.out") {
         my $total_unmapped = $total_reads - $total_mapped; 
         print STDOUT "make_bulk_fastq.pl: using BAM input: $total_reads total reads, $total_unmapped reads not mapped to host genome..\n"; 
         print STDOUT "make_bulk_fastq.pl: extracting unmapped paired-end reads from the BAM file!\n";
-        system "$cmd samtools fastq -\@4 -f4 -1 Unmapped_unfilt.R1.fastq -2 Unmapped_unfilt.R2.fastq -s Unmapped_unfilt.S.fastq $bam"; 
+        system "$cmd samtools fastq -\@$cpus -f4 -1 Unmapped_unfilt.R1.fastq -2 Unmapped_unfilt.R2.fastq -s Unmapped_unfilt.S.fastq $bam"; 
     } else { 
         my $total_reads  = `grep "primary\$"      host.bam.flagstat | awk '{printf "%d",\$1+\$3}'`; 
         my $total_mapped = `grep "primary mapped" host.bam.flagstat | awk '{printf "%d",\$1+\$3}'`;
         my $total_unmapped = $total_reads - $total_mapped; 
         print STDOUT "make_umi_fastq.pl: using BAM input: $total_reads total reads, $total_unmapped reads not mapped to host genome..\n"; 
         print STDOUT "make_bulk_fastq.pl: extracting unmapped single-end reads from the BAM file!\n";
-        system "$cmd samtools fastq -\@4 -f4 -0 Unmapped_unfilt.R1.fastq $bam";
+        system "$cmd samtools fastq -\@$cpus -f4 -0 Unmapped_unfilt.R1.fastq $bam";
     } 
     
     ## now we do the same thing as with the unmapped reads above (sync reading) 
