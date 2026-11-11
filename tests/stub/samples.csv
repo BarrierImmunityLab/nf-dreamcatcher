@@ -1,0 +1,6 @@
+sample_id,instrument,reads_dir
+STUB_10X,10x,tests/stub/reads/10x
+STUB_BULK_PE,bulk,tests/stub/reads/bulk_pe
+STUB_BULK_SE,bulk,tests/stub/reads/bulk_se
+STUB_10X_NO_STRAINS,10x,tests/stub/reads/10x
+STUB_BULK_NO_FILTERED,bulk,tests/stub/reads/bulk_pe

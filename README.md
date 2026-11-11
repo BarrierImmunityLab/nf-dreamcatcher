@@ -36,7 +36,7 @@ At the same time, careful case-by-case consideration of bacteria of interest has
 
 ## Output 
 
-The output contains the following folders: 
+In the original bash pipeline all files of a sample were written to one directory with the following layout. The Nextflow pipeline keeps every one of these files as a declared output of the process that makes it (see `modules/local/dreamcatcher/*/main.nf`), so they are all available in the Nextflow work directory, but only the key files listed further down are published. The numbered folders are:
 
   - `0_preprocessed_reads` - with read preprocessing logs and barcode corrections (if performed); 
   - `1_krakenuniq` - the output of `krakenuniq` unmapped read classification; 
@@ -44,16 +44,16 @@ The output contains the following folders:
   - `3_filtered_strains` - list of the filtered strains, as well as annotated per-gene and per-read outputs; 
   - `4_read_networks` - all the files that are the input and the output of the read graph collapsing algorithm; 
   - `5_top_strains` - list of the top strains, as well as `hisat2` indexes, BAM files, annotated `featureCounts` outputs; 
-  - `6_umitools` - results of `umi-tools` processing, in case of 10x single cell or Visium experiments. Not present if the tool was ran in the `--bulk` mode.  
+  - `6_umitools` - results of `umi-tools` processing, in case of 10x single cell or Visium experiments. Not present for bulk samples.  
 
-Most important output files are also present in the root directory:
+The pipeline publishes these key files for each sample (`<outdir>/<sample_id>/`):
   
   - `kuniq.report.txt` - KrakenUniq report file that contains metagenomic classification for all reads unmapped to host, and can be visualised using [Pavian](https://github.com/fbreitwieser/pavian); 
-  - `detected.annotated_fcounts.tsv`, `detected.summary.tsv` - per-gene and per-strain metrics for the detected strains, derived by mapping reads to a set of strains (`2_detected_strains/detected_strains.list`) with > 3 unique k-mers in KrakenUniq;  
+  - `detected.annotated_fcounts.tsv`, `detected.summary.tsv` - per-gene and per-strain metrics for the detected strains, derived by mapping reads to a set of strains (`detected_strains.list`) with > 3 unique k-mers in KrakenUniq;  
   - `filtered.annotated_fcounts.tsv`, `filtered.summary.tsv` - per-gene and per-strain metrics for the filtered strains. Details of the filtering process could be found in `3_filtered_strains/filter_strains.log`; 
   - `filtered.cluster.tsv`, `top.cluster.tsv` - results of read network clustering (input and output strains);
   - `mapstats.tsv` - detailed statistics of reads that were mapped/assigned to a gene in detected, filtered, and top strains; 
-  - `barcode_to_species.tsv` - corrected barcode by identified bacterial species matrix. Not present if the tool was ran in the `--bulk` mode.
+  - `barcode_to_species.tsv` - corrected barcode by identified bacterial species matrix. Not present for bulk samples.
 
 Two file types that don't have a header are `*.summary.tsv` and `*.annotated_fcounts.tsv`. Given below is the description of each file. 
 
@@ -123,24 +123,70 @@ All of these smaller files are available as archives in `/data` subdirectory of 
 
 ## Pipeline organization 
 
-The pipeline is linear, and written in `bash`, with `perl` used extensively for text file parsing. All of the binary executables are called via `singularity`. Thus, you should be able to run it on any Unix system with `singularity` installed. 
+The pipeline is written in [Nextflow](https://www.nextflow.io/) (DSL2, static types), with `perl` used extensively for text file parsing. Each step is its own process with its own resource request: for example, `KRAKENUNIQ` asks for a lot of memory but little else, while the `hisat2` steps ask for many cores but little memory. There are four container images, grouped by how costly it is to re-run the processes that use them: `dreamcatcher-krakenuniq`, `dreamcatcher-mapping` (HISAT2 and featureCounts), `dreamcatcher-r`, and `dreamcatcher-utils` for the quick steps. The images are defined in `images/` (one folder per image, `images/<name>/<version>/Dockerfile`) and are published as `ghcr.io/barrierimmunitylab/<name>:<version>`.
 
-### Installation 
+```
+PREPROCESS_READS ─┬─ KRAKENUNIQ ─ KUNIQ_TO_GCF ─ detected strains: MAKE_COMBINED_REFERENCE ─ HISAT2_BUILD ─ HISAT2_MAP ─ FEATURECOUNTS ─ ANNOTATE_MAPPED_READS ─ MAKE_SUMMARY_TABLES ─┐
+                  └─ HISAT2_MAP (T2T + phiX) ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+─ FILTER_STRAINS ─ GET_SHARED_UNIQ_READS ─ MAKE_READ_NETWORK (x3) ─ PARSE_READ_NETWORK ─ top strains: (same mapping steps, then FILTER_TOP_GFF and a recount) ─ UMI_TOOLS_COUNT (10x only) ─ BARCODE_TO_SPECIES ─ MAPSTATS
+```
 
-To run the pipeline: 
+The numbered steps of the original `dreamcatcher` script correspond to processes as follows.
 
-  - create all of the necessary reference indexes (see #Reference preparation above);
-  - run `git clone https://github.com/apredeus/dreamcatcher`, and add the folder location to your `$PATH`; 
-  - edit the `dreamcatcher` script to include the relevant reference index locations. 
+| Original step | Process(es) |
+|:-|:-|
+| 1. Extract and preprocess unmapped reads | `MAKE_UMI_FASTQ`, `GET_BARCODE_CORRECTIONS`, `CORRECT_BARCODES` (10x) or `MAKE_BULK_FASTQ` (bulk) |
+| 2. KrakenUniq | `KRAKENUNIQ` |
+| 3. Detected strains | `KUNIQ_TO_GCF` |
+| 4-5. Combined reference and `hisat2` index | `MAKE_COMBINED_REFERENCE_DETECTED`, `HISAT2_BUILD_DETECTED` |
+| 6-8. Mapping to the detected strains and to T2T+phiX, counting | `HISAT2_MAP_DETECTED`, `HISAT2_MAP_HUMAN`, `FEATURECOUNTS_DETECTED` |
+| 9-11. Per-read, per-gene and per-strain tables | `ANNOTATE_MAPPED_READS_DETECTED`, `EXTRACT_GENE_BIOTYPES`, `MAKE_SUMMARY_TABLES_DETECTED` |
+| 12. Strain filtering | `FILTER_STRAINS` |
+| 13. Read network | `GET_SHARED_UNIQ_READS`, `MAKE_READ_NETWORK_ALL/RRNA/PROTEIN` |
+| 14. Clustering | `PARSE_READ_NETWORK` |
+| 15-19. Top strains: reference, mapping, counting, tables | `MAKE_COMBINED_REFERENCE_TOP`, `HISAT2_BUILD_TOP`, `HISAT2_MAP_TOP`, `FEATURECOUNTS_TOP`, `ANNOTATE_MAPPED_READS_TOP`, `MAKE_SUMMARY_TABLES_TOP_INITIAL` |
+| 20-22. Remove bad genes, recount | `FILTER_TOP_GFF`, `FEATURECOUNTS_SORT_GENE`, `FEATURECOUNTS_SORT_STRAIN`, `MAKE_SUMMARY_TABLES_TOP` |
+| 23-24. UMI counting, barcode-to-species table (10x) | `UMI_TOOLS_COUNT_GENE`, `UMI_TOOLS_COUNT_STRAIN`, `BARCODE_TO_SPECIES` |
+| 25-26. Mapping statistics | `MAPSTATS` |
 
-You should be all set after this! 
+Differences from the original script:
+
+  - input is the STAR/STARsolo output directory only (`Unmapped.out.mate1/2` with `Log.out` and `Log.final.out`); the `--bam` and `--skip-remap` options are gone (use `-resume` instead);
+  - the human/phiX remapping does not depend on KrakenUniq, so it runs at the same time as KrakenUniq;
+  - if no strain is detected, or none passes the filtering, the sample finishes successfully with a zero-filled `mapstats.tsv` (the original wrote it and then exited with an error);
+  - the cell barcode whitelists are bundled in the `dreamcatcher-utils` image (from the same cellgeni/STARsolo commit as the `cellgeni-starsolo` image) and the whitelist is looked up there by the file name recorded in the STARsolo `Log.out`, since the recorded path is not visible inside this container; there is no `whitelists_dir` reference data.
 
 ### Running the analysis
 
-To run the analysis, simply run 
+Create a samplesheet with one row per sample. `instrument` is `10x` for single cell/spatial data; any other value processes the sample as bulk. `reads_dir` is the STAR/STARsolo output directory.
 
-```bash
-dreamcatcher <path_to_fastq_directory> <sample_ID> 
+```
+sample_id,instrument,reads_dir
+SRX20761959,10x,/path/to/starsolo/SRX20761959
+SRX24417731,bulk,/path/to/star/SRX24417731
 ```
 
-The default resources required by the script are 16 cores and 128 GB of RAM. You probably can try to run it on as low as 30 GB, depending on the number of detected strains. 
+and run
+
+```bash
+nextflow run main.nf -profile qimrb,pbspro,trace --input samples.csv -resume
+```
+
+The profiles `qimrb` (cluster paths, Singularity bind mounts), `pbspro` (executor and the per-process resources in `conf/pbspro.config`) and `trace` (execution trace with the peak memory of every task) are those of the [atlas-ingest-pipeline](https://github.com/BarrierImmunityLab/atlas-ingest-pipeline). Edit `conf/pbspro.config` after looking at the trace. The reference data root (`--dreamcatcher_refdata_root`) must contain what is described in the Reference preparation section:
+
+```
+<dreamcatcher_refdata_root>/NCBI_datasets/bacteria_ref/ncbi_dataset/data/   RefSeq genomes and annotations
+<dreamcatcher_refdata_root>/KrakenUniq_select/                              KrakenUniq database, seqid2taxid.map.refseq, assembly_summary_bacteria.txt, gcf_species_genus.tsv
+<dreamcatcher_refdata_root>/decoy_reference/T2T_mito_phix.*.ht2             T2T + phiX hisat2 index
+```
+
+Results are published to `<outputDir>/<sample_id>/`, together with `<outputDir>/versions.csv`.
+
+### Running it from another pipeline
+
+`subworkflows/local/dreamcatcher.nf` takes a channel of records `(sample_id, instrument, unmapped_reads_with_logs)` and emits the key files of every sample as a record (see `DreamcatcherResult` in `lib/types.nf`). It uses the parameters `dreamcatcher_refdata_root`. The calling pipeline needs `nextflow.enable.moduleBinaries = true` (the scripts of every process are in its `resources/usr/bin` folder), the Singularity bind mounts and `module load singularity` as in the `qimrb` profile, and the resources in `conf/pbspro.config`. The scripts and `blacklisted_genes.list` are read from the pipeline directory inside the containers, so that directory (like the work directory and the reference data) must be visible there: under `/working` for the `qimrb` bind mount, or under `$HOME`, which Singularity binds by default.
+
+### Testing
+
+  - `nextflow run main.nf -profile stub -stub-run` checks the wiring of all processes without any tools or reference data;
+  - to compare a full run with an example output, copy the Nextflow work directory of the run and compare the files of the process directories by name with the numbered folders of the example.
