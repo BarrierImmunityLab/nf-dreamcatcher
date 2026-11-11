@@ -5,7 +5,7 @@ include { toolVersion } from '../../../../lib/versions'
 process FEATURECOUNTS {
     tag sample_id
     label "use_singularity"
-    container "ghcr.io/barrierimmunitylab/dreamcatcher-featurecounts:1.0.0"
+    container "ghcr.io/barrierimmunitylab/dreamcatcher-mapping:1.0.0"
 
     input:
     record(

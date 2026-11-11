@@ -5,7 +5,7 @@ include { samtoolsVersion ; toolVersion } from '../../../../lib/versions'
 process HISAT2_MAP {
     tag sample_id
     label "use_singularity"
-    container "ghcr.io/barrierimmunitylab/dreamcatcher-hisat2:1.0.0"
+    container "ghcr.io/barrierimmunitylab/dreamcatcher-mapping:1.0.0"
 
     input:
     record(
