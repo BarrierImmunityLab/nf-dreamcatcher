@@ -26,7 +26,7 @@ process HISAT2_BUILD {
 
     script:
     """
-    hisat2-build ${fna} ${prefix}_strains &> ${prefix}.hisat2_build.log
+    hisat2-build -p ${task.cpus} ${fna} ${prefix}_strains &> ${prefix}.hisat2_build.log
     """
 
     stub:
