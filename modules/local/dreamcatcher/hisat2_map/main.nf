@@ -19,6 +19,9 @@ process HISAT2_MAP {
     bam_name: String
     log_name: String
 
+    stage:
+    stageAs index_files, '*'
+
     output:
     record(
         sample_id: sample_id,
