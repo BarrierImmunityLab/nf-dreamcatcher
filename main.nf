@@ -9,7 +9,7 @@ workflow {
     ch_samples = channel.fromPath(params.input)
         .flatMap { csv -> csv.splitCsv(header: true) }
         .map { row -> toDreamcatcherInput(row) }
-    ch_results = DREAMCATCHER(ch_samples)
+    ch_results = DREAMCATCHER(ch_samples, params.dreamcatcher_refdata_root)
 
     // Tool versions
     ch_versions = channel.topic('versions')

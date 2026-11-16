@@ -36,14 +36,15 @@ include { MAPSTATS } from '../../modules/local/dreamcatcher/mapstats'
 workflow DREAMCATCHER {
     take:
     samples: Channel<DreamcatcherInput>
+    refdata_root: String
 
     main:
-    ncbi_dir = file("${params.dreamcatcher_refdata_root}/NCBI_datasets/bacteria_ref/ncbi_dataset/data")
-    kuniq_db = file("${params.dreamcatcher_refdata_root}/KrakenUniq_select")
-    seq2taxid = file("${params.dreamcatcher_refdata_root}/KrakenUniq_select/seqid2taxid.map.refseq")
-    assembly_summary = file("${params.dreamcatcher_refdata_root}/KrakenUniq_select/assembly_summary_bacteria.txt")
-    gcf_species_genus = file("${params.dreamcatcher_refdata_root}/KrakenUniq_select/gcf_species_genus.tsv")
-    human_index_files = files("${params.dreamcatcher_refdata_root}/decoy_reference/T2T_mito_phix.*.ht2*")
+    ncbi_dir = file("${refdata_root}/NCBI_datasets/bacteria_ref/ncbi_dataset/data")
+    kuniq_db = file("${refdata_root}/KrakenUniq_select")
+    seq2taxid = file("${refdata_root}/KrakenUniq_select/seqid2taxid.map.refseq")
+    assembly_summary = file("${refdata_root}/KrakenUniq_select/assembly_summary_bacteria.txt")
+    gcf_species_genus = file("${refdata_root}/KrakenUniq_select/gcf_species_genus.tsv")
+    human_index_files = files("${refdata_root}/decoy_reference/T2T_mito_phix.*.ht2*")
 
     // STEP 1: Extract and preprocess the unmapped reads for further analysis..
     // 6 distinct cases: bulk/single-cell mode, paired-end/single-end reads. Only 10x is processed in single cell mode, and 10x reads are always coerced to UMI-Tools formatted single-end reads
@@ -53,7 +54,6 @@ workflow DREAMCATCHER {
     ch_10x = samples.filter { r -> r.instrument == '10x' }.map { r -> record(sample_id: r.sample_id) }
 
     // STEP 2: Running KrakenUniq ..
-    // KrakenUniq quits with no error and no output in some cases, still not sure why. Just re-run the job (see the retries in conf/pbspro.config).
     ch_kuniq = KRAKENUNIQ(ch_reads, kuniq_db)
 
     // STEP 3: Extracting unique bacterial RefSeq accessions ..
