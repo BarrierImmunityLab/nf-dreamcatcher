@@ -4,10 +4,6 @@
 # OS
 .DS_Store
 
-# Rough work
-example-outputs/
-tests/replay/
-
 # Nextflow
 .nextflow*
 local_dev
