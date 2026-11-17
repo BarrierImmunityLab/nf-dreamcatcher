@@ -1,0 +1,11 @@
+# HPC
+*.o*
+
+# OS
+.DS_Store
+
+# Nextflow
+.nextflow*
+local_dev
+trace
+work
